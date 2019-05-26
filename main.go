@@ -18,18 +18,16 @@ type Process struct {
 	waitingTime int
 }
 
-type processFuncInterface func(processes []Process)
+type executeProcessesInterface func(processes []Process)
 
 func main() {
 	processes := readFileProcesses("processes.csv")
 
 	quantumTime := 2
 
-	processingOrder := executeProcessesWithRoundRobin(processes, quantumTime)
+	processingOrder, averageProcessingTime := executeProcessesWithRoundRobin(processes, quantumTime)
 
-	printProcessingOrder(processingOrder)
-
-	printProcesses(processes)
+	printProcesses(processes, processingOrder, averageProcessingTime)
 }
 
 func readFileProcesses(filename string) []Process {
@@ -64,11 +62,11 @@ func openFileAndGetAReader(fileName string) *csv.Reader {
 	return csv.NewReader(bufio.NewReader(csvFile))
 }
 
-func executeProcessesWithRoundRobin (processes []Process, quantum int) string {
+func executeProcessesWithRoundRobin (processes []Process, quantum int) (resultingProcessingOrder []string, averageProcessingTime float32) {
 
 	currentTime := 0
 
-	processingOrder := ""
+	processingOrder := make([]string, 0)
 
 	executeSchedulingWithProcessingTimeAndArrivalTimeBackup(processes, func(processes []Process) {
 		for {
@@ -78,7 +76,7 @@ func executeProcessesWithRoundRobin (processes []Process, quantum int) string {
 					if processes[i].arrivalTime <= quantum {
 						processes[i], currentTime, completed = executeProcess(processes[i], currentTime, quantum)
 						if completed == false {
-							processingOrder += processes[i].PID + "->"
+							processingOrder = append(processingOrder, processes[i].PID)
 						}
 					} else if processes[i].arrivalTime > quantum {
 						for j := 0; j < len(processes); j++ {
@@ -86,12 +84,12 @@ func executeProcessesWithRoundRobin (processes []Process, quantum int) string {
 							if processes[j].arrivalTime < processes[i].arrivalTime {
 								processes[j], currentTime, completed = executeProcess(processes[j], currentTime, quantum)
 								if completed == false {
-									processingOrder += processes[j].PID + "->"
+									processingOrder = append(processingOrder, processes[j].PID)
 								}
 							}
 							processes[i], currentTime, completed = executeProcess(processes[i], currentTime, quantum)
 							if completed == false {
-								processingOrder += processes[i].PID + "->"
+								processingOrder = append(processingOrder, processes[i].PID)
 							}
 						}
 					}
@@ -106,12 +104,12 @@ func executeProcessesWithRoundRobin (processes []Process, quantum int) string {
 		}
 	})
 
-	calculateProcessesWaitingTime(processes)
+	updateProcessesWaitingTime(processes)
 
-	return processingOrder
+	return processingOrder, calculateAverageProcessingTime(processes)
 }
 
-func executeSchedulingWithProcessingTimeAndArrivalTimeBackup(processes []Process, callback processFuncInterface) {
+func executeSchedulingWithProcessingTimeAndArrivalTimeBackup(processes []Process, callback executeProcessesInterface) {
 	processArrivalTimeBackup := make([]int, len(processes))
 	processProcessingTimeBackup := make([]int, len(processes))
 
@@ -128,8 +126,9 @@ func executeSchedulingWithProcessingTimeAndArrivalTimeBackup(processes []Process
 	}
 }
 
-func executeProcess(process Process, currentTime int, quantum int) (updatedProcess Process, updatedTime int, completedFlag bool) {
-	if process.processingTime > 0 {
+func executeProcess(process Process, currentTime int, quantum int) (updatedProcess Process, updatedTime int, processCompletedFlag bool) {
+	processCompleted := Ternary(process.processingTime > 0, false, true).(bool)
+	if processCompleted == false {
 		if process.processingTime > quantum {
 			currentTime += quantum
 			process.processingTime -= quantum
@@ -140,18 +139,21 @@ func executeProcess(process Process, currentTime int, quantum int) (updatedProce
 			process.completionTime = currentTime
 		}
 	}
-	return process, currentTime, Ternary(process.processingTime > 0, false, true).(bool)
+	return process, currentTime, processCompleted
 }
 
-func printProcesses(processes []Process) {
+func printProcesses(processes []Process, finalProcessingOrder []string, totalAverageProcessingTime float32) {
+
 	for i := 0; i < len(processes); i++ {
 		fmt.Println("Waiting Time [", processes[i].PID,"]", processes[i].waitingTime, "ut")
 	}
-	averageProcessingTime := calculateAverageProcessingTime(processes)
-	fmt.Println("Average processing time", averageProcessingTime, "ut")
+
+	fmt.Println("Average processing time", totalAverageProcessingTime, "ut")
+
+	fmt.Println("Final processing order->", finalProcessingOrder)
 }
 
-func calculateProcessesWaitingTime(processes []Process) {
+func updateProcessesWaitingTime(processes []Process) {
 	for i := 0; i < len(processes); i++ {
 		processes[i].waitingTime = processes[i].completionTime - processes[i].arrivalTime - processes[i].processingTime
 	}
@@ -167,11 +169,6 @@ func getProcessesTotalWaitingTime(processes []Process) (totalWaitingTime float32
 		totalTime += float32(processes[i].waitingTime)
 	}
 	return totalTime
-}
-
-
-func printProcessingOrder(processingOrder string) {
-	fmt.Println(processingOrder)
 }
 
 func Ternary(statement bool, a, b interface{}) interface{} {
