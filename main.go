@@ -73,7 +73,6 @@ func executeProcessesWithRoundRobinTimeScheduling (processes []Process, quantum 
 			for {
 				completed := true
 				loopThroughProcesses(processes, func(currentProcess *Process) (walkBackToPriorProcessFlag bool) {
-					walkBackToPriorProcess := false
 					if currentProcess.arrivalTime <= currentTime {
 						if currentProcess.arrivalTime <= quantum {
 							currentProcess, currentTime, completed = executeProcess(currentProcess, currentTime, quantum)
@@ -97,9 +96,9 @@ func executeProcessesWithRoundRobinTimeScheduling (processes []Process, quantum 
 						}
 					} else if currentProcess.arrivalTime > currentTime {
 						currentTime++
-						walkBackToPriorProcess = true
+						return true
 					}
-					return walkBackToPriorProcess
+					return false
 				})
 				if completed {
 					break
