@@ -14,171 +14,177 @@ type Process struct {
 	PID string
 	arrivalTime  int
 	processingTime int
-	priority int
 	completionTime int
 	waitingTime int
 }
 
-func main() {
-	csvFile, _ := os.Open("processes.csv")
+type processFuncInterface func(processes []Process)
 
-	reader := csv.NewReader(bufio.NewReader(csvFile))
+func main() {
+	processes := readFileProcesses("processes.csv")
+
+	quantumTime := 2
+
+	processingOrder := executeProcessesWithRoundRobin(processes, quantumTime)
+
+	printProcessingOrder(processingOrder)
+
+	printProcesses(processes)
+}
+
+func readFileProcesses(filename string) []Process {
+	reader := openFileAndGetAReader(filename)
+
 	var processes []Process
 
 	for {
-		line, e := reader.Read()
+		line, err := reader.Read()
 
-		if e == io.EOF {
+		if err == io.EOF {
 			break
-		} else if e != nil {
-			log.Fatal(e)
-		}
-
-		arrivalTime, e := strconv.Atoi(line[0])
-		if e != nil {
-			log.Fatal(e)
-		}
-
-		priority, e := strconv.Atoi(line[2])
-		if e != nil {
-			log.Fatal(e)
-		}
-
-		processingTime, e := strconv.Atoi(line[3])
-		if e != nil {
-			log.Fatal(e)
+		} else if err != nil {
+			log.Fatal(err)
 		}
 
 		processes = append(processes, Process {
-			PID: line[1],
-			arrivalTime: arrivalTime,
-			processingTime: processingTime,
-			priority: priority,
+			PID: line[0],
+			arrivalTime: convertStringToInteger(line[1]),
+			processingTime: convertStringToInteger(line[2]),
 		})
 	}
 
-	quantum := 2
-
-	calculateRoundRobin(processes, quantum)
+	return processes
 }
 
-func calculateRoundRobin (processes []Process, quantum int) {
+func openFileAndGetAReader(fileName string) *csv.Reader {
+	csvFile, err := os.Open(fileName)
+	if err != nil {
+		log.Fatal(err)
+	}
+	return csv.NewReader(bufio.NewReader(csvFile))
+}
 
-	for i := 0; i < calculateMaximumProcessingTime(processes); i++ {
+func executeProcessesWithRoundRobin (processes []Process, quantum int) string {
 
-		for j := i; j < len(processes); j++ {
-			if processes[j].arrivalTime <= i {
+	currentTime := 0
 
-				if processes[j].processingTime > 0 {
-					if processes[j].processingTime <= quantum {
-						processes[j].completionTime = i + processes[j].processingTime
-						processes[j].processingTime = 0
-					} else {
-						processes[j].processingTime -= quantum
+	processingOrder := ""
+
+	executeSchedulingWithProcessingTimeAndArrivalTimeBackup(processes, func(processes []Process) {
+		for {
+			completed := true
+			for i := 0; i < len(processes); i++ {
+				if processes[i].arrivalTime <= currentTime {
+					if processes[i].arrivalTime <= quantum {
+						processes[i], currentTime, completed = executeProcess(processes[i], currentTime, quantum)
+						if completed == false {
+							processingOrder += processes[i].PID + "->"
+						}
+					} else if processes[i].arrivalTime > quantum {
+						for j := 0; j < len(processes); j++ {
+
+							if processes[j].arrivalTime < processes[i].arrivalTime {
+								processes[j], currentTime, completed = executeProcess(processes[j], currentTime, quantum)
+								if completed == false {
+									processingOrder += processes[j].PID + "->"
+								}
+							}
+							processes[i], currentTime, completed = executeProcess(processes[i], currentTime, quantum)
+							if completed == false {
+								processingOrder += processes[i].PID + "->"
+							}
+						}
 					}
+				} else if processes[i].arrivalTime > currentTime {
+					currentTime++
+					i--
 				}
-
+			}
+			if completed {
+				break
 			}
 		}
+	})
 
-	}
+	calculateProcessesWaitingTime(processes)
+
+	return processingOrder
+}
+
+func executeSchedulingWithProcessingTimeAndArrivalTimeBackup(processes []Process, callback processFuncInterface) {
+	processArrivalTimeBackup := make([]int, len(processes))
+	processProcessingTimeBackup := make([]int, len(processes))
 
 	for i := 0; i < len(processes); i++ {
-		fmt.Println(processes[i])
+		processArrivalTimeBackup[i] = processes[i].arrivalTime
+		processProcessingTimeBackup[i] = processes[i].processingTime
 	}
-	//for i := 0; i <= maximumProcessingTime; i++ {
-	//	for j := 0; j < len(processes); j++ {
-	//		if processes[j].arrivalTime <= i {
-	//
-	//			if processes[j].processingTime > quantum {
-	//				processes[j].processingTime -= quantum
-	//				processes[j].arrivalTime += quantum
-	//			} else if processes[j].processingTime > 0 {
-	//				processes[j].arrivalTime += processes[j].processingTime
-	//				processes[j].processingTime = 0
-	//				processes[j].completionTime = processes[j].arrivalTime
-	//			}
-	//
-	//		}
-	//	}
-	//}
-	//fmt.Println(processes)
+
+	callback(processes)
+
+	for i := 0; i < len(processes); i++ {
+		processes[i].arrivalTime = processArrivalTimeBackup[i]
+		processes[i].processingTime = processProcessingTimeBackup[i]
+	}
 }
 
-func calculateMaximumProcessingTime(processes []Process) int {
-	var total int = 0
-	for _, process := range processes {
-		total += process.processingTime
-	}
-	return total
-}
-
-func calculateAverageProcessingTime(processingTimes []int) int {
-	var sum int = 0
-	for _, i := range processingTimes {
-		sum += i
-	}
-	return (sum / len(processingTimes))
-}
-func calculateProcessesWaitingTime(processes []string, processingTimes []int, arrivalTime []int, quantum int) []int {
-	remainingProcessingTime := make([]int, len(processes))
-
-	copy(remainingProcessingTime, processingTimes)
-
-	proccessWaitingTime := make([]int, len(processes))
-	proccessArrivalTime := make([]int, len(processes))
-
-	currentUnitTime := 0
-
-	for {
-		completed := true
-
-		for i := 0; i < len(processes); i++ {
-			if remainingProcessingTime[i] > 0 {
-				completed = false
-				if remainingProcessingTime[i] > quantum {
-					//currentUnitTime = quantum
-
-					currentUnitTime += quantum
-					remainingProcessingTime[i] -= quantum
-
-				} else {
-					currentUnitTime += remainingProcessingTime[i]
-
-					proccessWaitingTime[i] = currentUnitTime - processingTimes[i]
-
-					remainingProcessingTime[i] = 0
-
-					proccessArrivalTime[i] = currentUnitTime
-				}
-			}
-		}
-
-		if completed == true {
-			break
+func executeProcess(process Process, currentTime int, quantum int) (updatedProcess Process, updatedTime int, completedFlag bool) {
+	if process.processingTime > 0 {
+		if process.processingTime > quantum {
+			currentTime += quantum
+			process.processingTime -= quantum
+			process.arrivalTime += quantum
+		} else {
+			currentTime += process.processingTime
+			process.processingTime = 0
+			process.completionTime = currentTime
 		}
 	}
-
-	return proccessWaitingTime
+	return process, currentTime, Ternary(process.processingTime > 0, false, true).(bool)
 }
 
-func calculateTurnAroundTime(processingTimes []int, waitingTimes []int) []int {
-	i := 0
-
-	turnAroundTime := make([]int, len(processingTimes))
-
-	for i = 0; i < len(processingTimes); i++ {
-		turnAroundTime[i] = processingTimes[i] + waitingTimes[i]
+func printProcesses(processes []Process) {
+	for i := 0; i < len(processes); i++ {
+		fmt.Println("Waiting Time [", processes[i].PID,"]", processes[i].waitingTime, "ut")
 	}
-
-	return turnAroundTime
+	averageProcessingTime := calculateAverageProcessingTime(processes)
+	fmt.Println("Average processing time", averageProcessingTime, "ut")
 }
 
-func valueInArray(a int, array []int) bool {
-	for _, value := range array {
-		if value == a {
-			return true
-		}
+func calculateProcessesWaitingTime(processes []Process) {
+	for i := 0; i < len(processes); i++ {
+		processes[i].waitingTime = processes[i].completionTime - processes[i].arrivalTime - processes[i].processingTime
 	}
-	return false
+}
+
+func calculateAverageProcessingTime(processes []Process) (averageProcessingTime float32) {
+	return getProcessesTotalWaitingTime(processes) / float32(len(processes))
+}
+
+func getProcessesTotalWaitingTime(processes []Process) (totalWaitingTime float32){
+	var totalTime float32
+	for i := 0; i < len(processes); i++ {
+		totalTime += float32(processes[i].waitingTime)
+	}
+	return totalTime
+}
+
+
+func printProcessingOrder(processingOrder string) {
+	fmt.Println(processingOrder)
+}
+
+func Ternary(statement bool, a, b interface{}) interface{} {
+	if statement {
+		return a
+	}
+	return b
+}
+
+func convertStringToInteger(value string) int {
+	integerValue, err := strconv.Atoi(value)
+	if err != nil {
+		log.Fatal(err)
+	}
+	return integerValue
 }
