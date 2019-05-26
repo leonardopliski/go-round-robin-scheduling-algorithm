@@ -19,13 +19,14 @@ type Process struct {
 }
 
 type executeProcessesInterface func(processes []Process)
+type processLoopInnerFunctionInterface func(process *Process) (walkBackToPriorProcess bool)
 
 func main() {
 	processes := readFileProcesses("processes.csv")
 
 	quantumTime := 2
 
-	processingOrder, averageProcessingTime := executeProcessesWithRoundRobin(processes, quantumTime)
+	processingOrder, averageProcessingTime := executeProcessesWithRoundRobinTimeScheduling(processes, quantumTime)
 
 	printProcesses(processes, processingOrder, averageProcessingTime)
 }
@@ -62,51 +63,57 @@ func openFileAndGetAReader(fileName string) *csv.Reader {
 	return csv.NewReader(bufio.NewReader(csvFile))
 }
 
-func executeProcessesWithRoundRobin (processes []Process, quantum int) (resultingProcessingOrder []string, averageProcessingTime float32) {
-
-	currentTime := 0
+func executeProcessesWithRoundRobinTimeScheduling (processes []Process, quantum int) (resultingProcessingOrder []string, averageProcessingTime float32) {
 
 	processingOrder := make([]string, 0)
 
 	executeSchedulingWithProcessingTimeAndArrivalTimeBackup(processes, func(processes []Process) {
-		for {
-			completed := true
-			for i := 0; i < len(processes); i++ {
-				if processes[i].arrivalTime <= currentTime {
-					if processes[i].arrivalTime <= quantum {
-						processes[i], currentTime, completed = executeProcess(processes[i], currentTime, quantum)
-						if completed == false {
-							processingOrder = append(processingOrder, processes[i].PID)
-						}
-					} else if processes[i].arrivalTime > quantum {
-						for j := 0; j < len(processes); j++ {
+			currentTime := 0
 
-							if processes[j].arrivalTime < processes[i].arrivalTime {
-								processes[j], currentTime, completed = executeProcess(processes[j], currentTime, quantum)
-								if completed == false {
-									processingOrder = append(processingOrder, processes[j].PID)
-								}
-							}
-							processes[i], currentTime, completed = executeProcess(processes[i], currentTime, quantum)
+			for {
+				completed := true
+				loopThroughProcesses(processes, func(currentProcess *Process) (walkBackToPriorProcessFlag bool) {
+					walkBackToPriorProcess := false
+					if currentProcess.arrivalTime <= currentTime {
+						if currentProcess.arrivalTime <= quantum {
+							currentProcess, currentTime, completed = executeProcess(currentProcess, currentTime, quantum)
 							if completed == false {
-								processingOrder = append(processingOrder, processes[i].PID)
+								processingOrder = appendProcessToProcessingOrder(currentProcess, processingOrder)
 							}
+						} else if currentProcess.arrivalTime > quantum {
+							loopThroughProcesses(processes, func(process *Process) (walkBackToPriorProcessFlag bool) {
+								if process.arrivalTime < currentProcess.arrivalTime {
+									process, currentTime, completed = executeProcess(process, currentTime, quantum)
+									if completed == false {
+										processingOrder = appendProcessToProcessingOrder(process, processingOrder)
+									}
+								}
+								currentProcess, currentTime, completed = executeProcess(currentProcess, currentTime, quantum)
+								if completed == false {
+									processingOrder = appendProcessToProcessingOrder(currentProcess, processingOrder)
+								}
+								return false
+							})
 						}
+					} else if currentProcess.arrivalTime > currentTime {
+						currentTime++
+						walkBackToPriorProcess = true
 					}
-				} else if processes[i].arrivalTime > currentTime {
-					currentTime++
-					i--
+					return walkBackToPriorProcess
+				})
+				if completed {
+					break
 				}
 			}
-			if completed {
-				break
-			}
-		}
 	})
 
 	updateProcessesWaitingTime(processes)
 
 	return processingOrder, calculateAverageProcessingTime(processes)
+}
+
+func appendProcessToProcessingOrder(process *Process, processingOrder []string) []string {
+	return append(processingOrder, process.PID)
 }
 
 func executeSchedulingWithProcessingTimeAndArrivalTimeBackup(processes []Process, callback executeProcessesInterface) {
@@ -126,7 +133,16 @@ func executeSchedulingWithProcessingTimeAndArrivalTimeBackup(processes []Process
 	}
 }
 
-func executeProcess(process Process, currentTime int, quantum int) (updatedProcess Process, updatedTime int, processCompletedFlag bool) {
+func loopThroughProcesses(processes []Process, callback processLoopInnerFunctionInterface) {
+	for i := 0; i < len(processes); i++ {
+		walkToPriorProcessFlag := callback(&processes[i])
+		if walkToPriorProcessFlag {
+			i--
+		}
+	}
+}
+
+func executeProcess(process *Process, currentTime int, quantum int) (updatedProcess *Process, updatedTime int, processCompletedFlag bool) {
 	processCompleted := Ternary(process.processingTime > 0, false, true).(bool)
 	if processCompleted == false {
 		if process.processingTime > quantum {
