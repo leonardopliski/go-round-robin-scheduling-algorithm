@@ -1,4 +1,4 @@
-package main
+package helpers
 
 import (
 	"log"
@@ -12,7 +12,7 @@ func Ternary(statement bool, a, b interface{}) interface{} {
 	return b
 }
 
-func convertStringToInteger(value string) int {
+func ConvertStringToInteger(value string) int {
 	integerValue, err := strconv.Atoi(value)
 	if err != nil {
 		log.Fatal(err)

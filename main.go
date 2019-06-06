@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"./helpers"
 )
 
 type Process struct {
@@ -46,8 +47,8 @@ func readFileProcesses(filename string) []Process {
 
 		processes = append(processes, Process{
 			PID:            line[0],
-			arrivalTime:    convertStringToInteger(line[1]),
-			processingTime: convertStringToInteger(line[2]),
+			arrivalTime:    helpers.ConvertStringToInteger(line[1]),
+			processingTime: helpers.ConvertStringToInteger(line[2]),
 		})
 	}
 
@@ -141,7 +142,7 @@ func loopThroughProcesses(processes []Process, callback processLoopInnerFunction
 }
 
 func executeProcess(process *Process, currentTime int, quantum int) (updatedProcess *Process, updatedTime int, processCompletedFlag bool) {
-	processCompleted := Ternary(process.processingTime > 0, false, true).(bool)
+	processCompleted := helpers.Ternary(process.processingTime > 0, false, true).(bool)
 	if processCompleted == false {
 		if process.processingTime > quantum {
 			currentTime += quantum
