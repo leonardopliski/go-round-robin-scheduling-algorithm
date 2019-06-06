@@ -7,7 +7,6 @@ import (
 	"io"
 	"log"
 	"os"
-	"strconv"
 )
 
 type Process struct {
@@ -184,19 +183,4 @@ func getProcessesTotalWaitingTime(processes []Process) (totalWaitingTime float32
 		totalTime += float32(processes[i].waitingTime)
 	}
 	return totalTime
-}
-
-func Ternary(statement bool, a, b interface{}) interface{} {
-	if statement {
-		return a
-	}
-	return b
-}
-
-func convertStringToInteger(value string) int {
-	integerValue, err := strconv.Atoi(value)
-	if err != nil {
-		log.Fatal(err)
-	}
-	return integerValue
 }
